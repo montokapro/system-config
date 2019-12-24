@@ -7,9 +7,11 @@
              (guix git-download)
              (guix build-system trivial)
              (gnu packages linux)
+             (gnu packages package-management)
+             (gnu packages databases)
              (gnu)
              (secret))
-(use-service-modules desktop networking nfs ssh xorg virtualization)
+(use-service-modules desktop networking nfs nix ssh xorg virtualization databases)
 
 (define-public linux-firmware
   (let ((commit "711d3297bac870af42088a467459a0634c1970ca"))
@@ -96,18 +98,25 @@
                 %base-user-accounts))
   (packages
     (append
-      (list (specification->package "nss-certs"))
+      (list (specification->package "nss-certs")
+            nix
+            postgresql)
       %base-packages))
   (services
     (append
       (list (service gnome-desktop-service-type)
             (service openssh-service-type)
             (service tor-service-type)
+            (service nix-service-type)
             (service qemu-binfmt-service-type
              (qemu-binfmt-configuration
                (platforms (lookup-qemu-platforms "arm" "aarch64" "mips64el"))
                  (guix-support? #t)))
             (set-xorg-configuration
               (xorg-configuration
-                (keyboard-layout keyboard-layout))))
+                (keyboard-layout keyboard-layout)))
+            ;; development
+            (service redis-service-type)
+            (service memcached-service-type)
+            (postgresql-service))
       %desktop-services)))
