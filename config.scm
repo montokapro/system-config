@@ -11,7 +11,9 @@
              (gnu packages databases)
              (gnu)
              (secret))
-(use-service-modules desktop networking nfs nix ssh xorg virtualization databases)
+
+(use-service-modules desktop networking nfs nix ssh xorg mcron
+                     virtualization databases)
 
 (define-public linux-firmware
   (let ((commit "711d3297bac870af42088a467459a0634c1970ca"))
@@ -57,6 +59,27 @@
                (base32
                 "0nzgkg4si0378pz6cv3hwj7qmmi5wdz1qvml0198b61n89xdcypc"))))))
 
+(define steve-account
+  (user-account
+    (name "steve")
+    (comment "Stephen Webber")
+    (group "users")
+    (home-directory "/home/steve")
+    (supplementary-groups
+     '("wheel" "netdev" "audio" "video"))))
+
+(define accounts
+  (list steve-account
+        secret-account))
+
+(define guix-gc-job #~(job '(next-hour '(4)) "guix gc -F 16G"))
+
+(define daily-guix-pull-jobs
+  (map (lambda (account) `#~(job '(next-hour '(2))
+                                 (invoke "guix" "pull")
+                                 #:user ,(user-account-name account)))
+       accounts))
+
 (operating-system
   (locale "en_US.utf8")
   (timezone "America/Chicago")
@@ -85,17 +108,17 @@
              (device "/dev/mapper/cryptroot")
              (type "ext4")
              (dependencies mapped-devices))
+           ;; TODO: doesn't mount automatically
+           (file-system
+             (mount-point "/mnt/media")
+             (device (string-append "//" secret-server-ip "/media"))
+             (type "cifs")
+             (options (string-append "username=" secret-media-username ",password=" secret-media-password))
+             (mount? #f)
+             (create-mount-point? #t))
            %base-file-systems))
   (host-name "olimar")
-  (users (cons* (user-account
-                  (name "steve")
-                  (comment "Stephen Webber")
-                  (group "users")
-                  (home-directory "/home/steve")
-                  (supplementary-groups
-                   '("wheel" "netdev" "audio" "video")))
-                secret-account
-                %base-user-accounts))
+  (users (append accounts %base-user-accounts))
   (packages
     (append
       (list (specification->package "nss-certs")
@@ -110,11 +133,17 @@
             (service nix-service-type)
             (service qemu-binfmt-service-type
              (qemu-binfmt-configuration
-               (platforms (lookup-qemu-platforms "arm" "aarch64" "mips64el"))
-                 (guix-support? #t)))
+              (platforms (lookup-qemu-platforms "arm" "aarch64" "mips64el"))
+              (guix-support? #t)))
             (set-xorg-configuration
-              (xorg-configuration
-                (keyboard-layout keyboard-layout)))
+             (xorg-configuration
+              (keyboard-layout keyboard-layout)))
+            ;; TODO: fix mcron
+            (service mcron-service-type
+             (mcron-configuration
+              (jobs (cons*
+                     guix-gc-job
+                     daily-guix-pull-jobs))))
             ;; development
             (service redis-service-type)
             (service memcached-service-type)
