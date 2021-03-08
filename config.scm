@@ -1,22 +1,30 @@
 ;; This is an operating system configuration generated
 ;; by the graphical installer.
 
-(use-modules (guix packages)
-             (guix download)
-             (guix gexp)
-             (guix git-download)
-             (guix build-system trivial)
-             (gnu packages linux)
-             (gnu packages package-management)
-             (gnu packages databases)
-             (gnu)
-             (secret))
+(use-modules
+ (guix packages)
+ (guix download)
+ (guix gexp)
+ (guix git-download)
+ (guix build-system trivial)
+ (gnu packages linux)
+ (gnu packages package-management)
+ (gnu packages databases)
+ (gnu)
+ (secret))
 
-(use-service-modules desktop networking nfs nix ssh xorg mcron
-                     virtualization databases)
+(use-service-modules
+ desktop
+ networking
+ nfs
+ ssh
+ xorg
+ ;; mcron
+ virtualization
+ databases)
 
 (define-public linux-firmware
-  (let ((commit "711d3297bac870af42088a467459a0634c1970ca"))
+  (let ((commit "05789708b79b38eb0f1a20d8449b4eb56d39b39f"))
     (package
       (name "linux-firmware")
       (version (string-append "2019.09.23-" (string-take commit 7)))
@@ -24,11 +32,11 @@
                 (method git-fetch)
                 (uri (git-reference
                         (url (string-append
-                              "https://github.com/wkennington/linux-firmware"))
+                              "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware"))
                         (commit commit)))
                 (sha256
                  (base32
-                  "0dbnib2gh8kajyys3pps99lp5s4k6b26v2jmbq2x3vbl9fa1xgda"))))
+                  "1692nw80zaxfq59f85xnagc3mbr4a72hyisv7ifqsq55dbdyj9y5"))))
       (build-system trivial-build-system)
       (arguments
        `(#:modules ((guix build utils))
@@ -41,9 +49,9 @@
                   (firmware (string-append out "/lib/firmware")))
              (mkdir-p firmware)
              (copy-recursively source firmware)))))
-      (home-page "https://github.com/wkennington/linux-firmware")
+      (home-page "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/about")
       (synopsis "Linux firmware")
-      (description "Linux firmware.")
+      (description "Linux firmware")
       (license #f))))
 
 (define-public linux
@@ -95,8 +103,13 @@
   (mapped-devices
     (list (mapped-device
             (source
-              (uuid secret-device-uuid))
+              (uuid secret-root-uuid))
             (target "cryptroot")
+            (type luks-device-mapping))
+          (mapped-device
+            (source
+              (uuid secret-home-uuid))
+            (target "crypthome")
             (type luks-device-mapping))))
   (file-systems
     (cons* (file-system
@@ -106,6 +119,11 @@
            (file-system
              (mount-point "/")
              (device "/dev/mapper/cryptroot")
+             (type "ext4")
+             (dependencies mapped-devices))
+           (file-system
+             (mount-point "/home")
+             (device "/dev/mapper/crypthome")
              (type "ext4")
              (dependencies mapped-devices))
            ;; TODO: doesn't mount automatically
@@ -121,16 +139,15 @@
   (users (append accounts %base-user-accounts))
   (packages
     (append
-      (list (specification->package "nss-certs")
-            nix
-            postgresql)
-      %base-packages))
+     (list
+      (specification->package "nss-certs")
+      postgresql)
+     %base-packages))
   (services
     (append
       (list (service gnome-desktop-service-type)
             (service openssh-service-type)
             (service tor-service-type)
-            (service nix-service-type)
             (service qemu-binfmt-service-type
              (qemu-binfmt-configuration
               (platforms (lookup-qemu-platforms "arm" "aarch64" "mips64el"))
@@ -139,13 +156,15 @@
              (xorg-configuration
               (keyboard-layout keyboard-layout)))
             ;; TODO: fix mcron
-            (service mcron-service-type
-             (mcron-configuration
-              (jobs (cons*
-                     guix-gc-job
-                     daily-guix-pull-jobs))))
+            ;; (service mcron-service-type
+            ;;  (mcron-configuration
+            ;;   (jobs (cons*
+            ;;          guix-gc-job
+            ;;          daily-guix-pull-jobs))))
             ;; development
             (service redis-service-type)
             (service memcached-service-type)
-            (postgresql-service))
+            (service postgresql-service-type
+                     (postgresql-configuration
+                      (postgresql postgresql-13))))
       %desktop-services)))
